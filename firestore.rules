@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════
+//  Student Manager Pro — Firestore Security Rules
+//  Admin (email/password login) poora data manage karta hai.
+//  Student panel bina Firebase Auth ke login karta hai (admin-dia
+//  username/password), isliye student ke liye read open hai aur wo
+//  sirf apne self-service fields hi update kar sakta hai.
+//  NOTE: open read ka matlab — jiske paas public apiKey hai wo data
+//  padh sakta hai. Isse poori tarah band karne ke liye per-student
+//  Firebase Auth ya Cloud Function chahiye (alag setup).
+// ═══════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Signed-in check. Aapka panel email/password se login karta hai,
+    // isliye sirf logged-in admin hi ye pass karega.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ── OPTIONAL (recommended): sirf specific admin email ko allow karo.
+    //    Neeche apna admin email daal ke isAllowedAdmin() ko rules me
+    //    use karo taaki koi doosra authenticated user bhi access na le.
+    //    (Default me hum sirf signedIn() use kar rahe hain taaki aap
+    //     lock-out na ho. Email allowlist enable karna safe hai agar
+    //     aap Firebase me public sign-up BAND rakhte hain.)
+    function isAllowedAdmin() {
+      return signedIn()
+        && request.auth.token.email in [
+          'smarttech@gmail.com'
+        ];
+    }
+
+    // Student panel Firebase Auth use nahi karta (sirf admin-dia hua
+    // username/password se login hota hai), isliye student apna data
+    // padhne ke liye unauthenticated read chahiye. Lekin student sirf
+    // apne self-service fields hi change kar sake — username/password/
+    // fee/identity jaisi sensitive cheezein SIRF admin badal sake.
+    function isStudentSelfUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['attendance', 'totalPresent', 'totalAbsent', 'syllabus', 'reminderLog']);
+    }
+
+    // Students collection.
+    match /students/{studentId} {
+      // Student login query + admin dashboard — dono ke liye read open.
+      allow read:   if true;
+      allow create: if isAllowedAdmin();
+      allow delete: if isAllowedAdmin();
+      allow update: if isAllowedAdmin() || isStudentSelfUpdate();
+    }
+
+    // Baaki poora database default-deny. Koi bhi aur collection/path
+    // bina auth ke (aur yahan to bilkul bhi nahi) accessible nahi.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
