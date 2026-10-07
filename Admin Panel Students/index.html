@@ -1,0 +1,438 @@
+<html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: blob: https:; media-src 'self' https: blob:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.gstatic.com wss://*.firebaseio.com; object-src 'none'; base-uri 'self'; form-action 'self';">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>🔐 Admin Panel · Student Manager Pro</title>
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <div id="toast"></div>
+
+    <div id="app">
+
+        <!-- LOGIN -->
+        <div id="loginScreen">
+            <div class="logo"><i class="fas fa-user-shield"></i></div>
+            <h1>Admin Panel</h1>
+            <p class="sub">Manage Students · Attendance · Fees · Courses</p>
+            <div class="login-box">
+                <label><i class="fas fa-envelope"></i> Email</label>
+                <input type="email" id="adminEmail" placeholder="admin@example.com">
+                <label><i class="fas fa-lock"></i> Password</label>
+                <input type="password" id="adminPassword" placeholder="••••••••">
+                <div class="error-msg" id="loginError"></div>
+                <button class="login-btn" id="loginBtn"><i class="fas fa-sign-in-alt"></i> Sign In</button>
+                <div class="hint">Use your Firebase Auth credentials</div>
+            </div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="dashboard">
+
+            <!-- TOP BAR -->
+            <div class="dash-top">
+                <div class="brand">
+                    <span class="hamburger" id="hamburgerBtn"><i class="fas fa-bars"></i></span>
+                    <h2><i class="fas fa-graduation-cap"></i> Admin Pro</h2>
+                    <small>v10.2</small>
+                </div>
+                <div class="user-area">
+                    <span class="status-badge"><span class="dot"></span> Online</span>
+                    <span class="greet"><i class="fas fa-user"></i> <strong id="adminName">
+</strong></span>
+                    <button class="logout-btn" id="dashLogoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                </div>
+            </div>
+
+            <!-- PAGE: DASHBOARD -->
+            <div class="page-content active" id="page-dashboard">
+                <div class="stats-row" id="statsRow">
+                    <div class="stat-card"><div class="stat-num gold" id="statTotal">
+</div><div class="stat-label"><i class="fas fa-users"></i> Total Students</div></div>
+                    <div class="stat-card"><div class="stat-num green" id="statPresentToday">
+</div><div class="stat-label"><i class="fas fa-check-circle"></i> Present Today</div></div>
+                    <div class="stat-card"><div class="stat-num red" id="statAbsentToday">
+</div><div class="stat-label"><i class="fas fa-times-circle"></i> Absent Today</div></div>
+                    <div class="stat-card"><div class="stat-num blue" id="statPendingFee">
+</div><div class="stat-label"><i class="fas fa-coins"></i> Pending Fees</div></div>
+                    <div class="stat-card"><div class="stat-num" id="statCompleted">
+</div><div class="stat-label"><i class="fas fa-trophy"></i> Completed</div></div>
+                    <div class="stat-card"><div class="stat-num gold" id="statPaymentRequests">
+</div><div class="stat-label"><i class="fas fa-hand-holding-usd"></i> Payment Requests</div></div>
+                </div>
+
+                <div class="slot-grid-wrap">
+                    <div class="section-title"><i class="fas fa-clock"></i> Slot Distribution <span>— 6 batches · 10 students max each</span></div>
+                    <div class="slot-grid" id="slotGrid">
+</div>
+                </div>
+
+                <div class="controls-bar">
+                    <div class="left">
+                        <button class="btn-primary" id="addStudentBtn"><i class="fas fa-plus"></i> Add Student</button>
+                        <button class="btn-secondary" id="refreshBtn"><i class="fas fa-sync"></i> Refresh</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE: STUDENT MANAGEMENT -->
+            <div class="page-content" id="page-student-manage">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-user-edit"></i> Edit / Delete Students</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Manage student accounts</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>#</th><th>Photo</th><th>Name</th><th>Username</th><th>Course</th><th>Slot</th><th>Fee</th><th>Type</th><th>Actions</th></tr></thead>
+                        <tbody id="studentManageBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: ATTENDANCE REGISTER -->
+            <div class="page-content" id="page-attendance">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-clipboard-list"></i> Attendance Register</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Today: <strong id="attRegisterDate">Wed, 7 Oct, 2026</strong></span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>#</th><th>Name</th><th>Course</th><th>Slot</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody id="attendanceRegisterBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: REMINDERS (Payment Requests) -->
+            <div class="page-content" id="page-reminders">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-bell"></i> Payment Requests</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Approve or reject student payment requests</span>
+                </div>
+                <div class="reminder-panel" style="margin-top:0;">
+                    <div class="section-title">
+                        <span><i class="fas fa-list"></i> All Requests</span>
+                        <span class="badge-rem" id="reminderCount">0</span>
+                    </div>
+                    <div class="reminder-grid" id="reminderGrid">
+</div>
+                </div>
+            </div>
+
+            <!-- PAGE: SEND REMINDER -->
+            <div class="page-content" id="page-send-reminder">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-bell"></i> Send Reminder</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Manually send a fee reminder (auto sends every 28 days)</span>
+                </div>
+                <input type="text" class="search-box" id="sendReminderSearch" placeholder="🔍 Search by name, course, slot…">
+                <div class="send-reminder-list" id="sendReminderList">
+</div>
+            </div>
+
+            <!-- PAGE: ATTENDANCE HISTORY -->
+            <div class="page-content" id="page-att-history">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-history"></i> Attendance History</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Complete attendance record for each student</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Student</th><th>Course</th><th>Admission</th><th>Total Days</th><th>Present</th><th>Absent</th><th>Actions</th></tr></thead>
+                        <tbody id="attHistoryTableBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: REMINDER HISTORY -->
+            <div class="page-content" id="page-rem-history">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-bell"></i> Reminder History</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">All reminders (one per month per student)</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Student</th><th>Admission</th><th>Fee Type</th><th>Amount</th><th>Total Reminders</th><th>Paid</th><th>Actions</th></tr></thead>
+                        <tbody id="remHistoryTableBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: COMPLETED -->
+            <div class="page-content" id="page-completed">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-trophy"></i> Completed Courses</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Students who finished their course</span>
+                </div>
+                <div class="completed-grid" id="completedGrid">
+</div>
+            </div>
+
+            <!-- PAGE: HISTORY -->
+            <div class="page-content" id="page-history">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-history"></i> Student History</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Overview of all students</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Student</th><th>Course</th><th>Admission</th><th>Slot</th><th>Total Days</th><th>Present</th><th>Absent</th><th>Actions</th></tr></thead>
+                        <tbody id="historyTableBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: SYLLABUS MANAGEMENT -->
+            <div class="page-content" id="page-syllabus-manage">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-list"></i> Syllabus Management</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Add / Edit syllabus for each student</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Student</th><th>Course</th><th>Topics</th><th>Actions</th></tr></thead>
+                        <tbody id="syllabusManageBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- PAGE: COURSE MANAGEMENT -->
+            <div class="page-content" id="page-course-manage">
+                <button class="back-btn" onclick="navigateTo('page-dashboard')"><i class="fas fa-arrow-left"></i> Back to Dashboard</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+                    <h3 style="color:#1a1a2e; font-size:19px;"><i class="fas fa-graduation-cap"></i> Course Management</h3>
+                    <span style="color:#6a7a9a; font-size:14px;">Mark student courses as completed / View videos</span>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Student</th><th>Course</th><th>Admission</th><th>Videos</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody id="courseManageBody">
+</tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- SIDEBAR -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h3><i class="fas fa-graduation-cap"></i> Menu</h3>
+                <span class="close-btn" id="sidebarClose"><i class="fas fa-times"></i></span>
+            </div>
+            <div class="menu-section">
+                <div class="menu-label">Main</div>
+                <div class="menu-item active" data-page="page-dashboard"><i class="fas fa-home"></i> Dashboard</div>
+                <div class="menu-item" data-page="page-student-manage"><i class="fas fa-user-edit"></i> Edit/Delete Students <span class="badge gold" id="menuStudentBadge">0</span></div>
+                <div class="menu-item" data-page="page-attendance"><i class="fas fa-clipboard-list"></i> Attendance Register</div>
+                <div class="menu-item" data-page="page-reminders"><i class="fas fa-bell"></i> Reminders (Requests) <span class="badge" id="menuReminderBadge">0</span></div>
+                <div class="menu-item" data-page="page-send-reminder"><i class="fas fa-paper-plane"></i> Send Reminder</div>
+                <div class="menu-item" data-page="page-att-history"><i class="fas fa-history"></i> Attendance History <span class="badge gold" id="menuAttHistBadge">0</span></div>
+                <div class="menu-item" data-page="page-rem-history"><i class="fas fa-bell"></i> Reminder History <span class="badge green" id="menuRemHistBadge">0</span></div>
+                <div class="menu-item" data-page="page-completed"><i class="fas fa-trophy"></i> Completed <span class="badge green" id="menuCompletedBadge">0</span></div>
+                <div class="menu-item" data-page="page-history"><i class="fas fa-history"></i> History</div>
+                <div class="menu-item" data-page="page-syllabus-manage"><i class="fas fa-list"></i> Syllabus Management</div>
+                <div class="menu-item" data-page="page-course-manage"><i class="fas fa-graduation-cap"></i> Course Management</div>
+            </div>
+            <div class="menu-section" style="margin-top:auto; border-top:1px solid rgba(50,80,150,0.06); padding-top:12px;">
+                <div class="menu-item" id="sidebarAddStudent"><i class="fas fa-plus-circle" style="color:#3a6a9a;"></i> Add Student</div>
+                <div class="menu-item" id="sidebarAddCourse"><i class="fas fa-video" style="color:#3a6a9a;"></i> Add Course Video</div>
+                <div class="menu-item" id="sidebarRefresh"><i class="fas fa-sync" style="color:#3a6a9a;"></i> Refresh Data</div>
+                <div class="menu-item" id="sidebarLogout" style="color:#b04040;"><i class="fas fa-sign-out-alt" style="color:#b04040;"></i> Logout</div>
+            </div>
+        </div>
+
+        <!-- STUDENT MODAL -->
+        <div class="modal-overlay" id="modalOverlay">
+            <div class="modal-box">
+                <h3 id="modalTitle"><i class="fas fa-user-plus"></i> Add Student</h3>
+                <div class="sub" id="modalSub">Fill in all details below</div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-user"></i> Username</label><input type="text" id="modalUsername" placeholder="e.g. john_2025"></div>
+                    <div><label><i class="fas fa-lock"></i> Password</label><input type="text" id="modalPassword" placeholder="e.g. pass123"></div>
+                </div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-user-circle"></i> Full Name</label><input type="text" id="modalName" placeholder="John Doe"></div>
+                    <div><label><i class="fas fa-phone"></i> Mobile Number</label><input type="text" id="modalMobile" placeholder="+91 98765 43210"></div>
+                </div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-book"></i> Course</label><select id="modalCourse"><option value="Data Entry">Data Entry</option><option value="Tally">Tally</option><option value="DTP">DTP</option><option value="DCA">DCA</option><option value="ADCA">ADCA</option><option value="PGDCA">PGDCA</option><option value="PGDCAA" selected="">PGDCAA</option></select></div>
+                    <div><label><i class="fas fa-clock"></i> Batch Slot</label><select id="modalSlot"><option value="6:00-7:00">6:00 – 7:00</option><option value="7:00-8:00">7:00 – 8:00</option><option value="8:00-9:00" selected="">8:00 – 9:00</option><option value="9:00-10:00">9:00 – 10:00</option><option value="10:00-11:00">10:00 – 11:00</option><option value="11:00-12:00">11:00 – 12:00</option></select></div>
+                </div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-tag"></i> Fee Type</label>
+                        <select id="modalFeeType">
+                            <option value="monthly">Monthly</option>
+                            <option value="yearly">Yearly</option>
+                            <option value="fixed">Fixed (No Reminders)</option>
+                        </select>
+                    </div>
+                    <div><label><i class="fas fa-coins"></i> Fee Amount (₹)</label><input type="number" id="modalFee" placeholder="e.g. 1500" value="350"></div>
+                </div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-calendar-alt"></i> Duration (months)</label><input type="number" id="modalDuration" value="3" min="1"></div>
+                    <div><label><i class="fas fa-calendar-day"></i> Admission Date</label><input type="date" id="modalAdmission"></div>
+                </div>
+                <div class="form-row">
+                    <div><label><i class="fas fa-box"></i> Package</label><input type="text" id="modalPackage" placeholder="Basic / Standard / Premium" value="Standard"></div>
+                    <div><label>&nbsp;</label><div style="display:flex; gap:8px; align-items:center; padding-top:6px;"><input type="checkbox" id="modalSendReminder" checked="" style="width:18px; height:18px; accent-color:#3a6a9a;"><label for="modalSendReminder" style="margin:0; font-size:13px; text-transform:none; color:#4a5a7a;">Send auto-reminder</label></div></div>
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-calendar-week"></i> Attendance Pattern</label>
+                    <div class="pattern-selector" id="patternSelector">
+                        <span class="pattern-option active" data-pattern="daily">Daily (Mon-Sat)</span>
+                        <span class="pattern-option" data-pattern="mon_wed_fri">Mon/Wed/Fri</span>
+                        <span class="pattern-option" data-pattern="tue_thu_sat">Tue/Thu/Sat</span>
+                    </div>
+                    <input type="hidden" id="modalPattern" value="daily">
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-list"></i> Syllabus (one per line)</label>
+                    <textarea id="modalSyllabus" placeholder="Module 1: Introduction
+Module 2: Basics"></textarea>
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-image"></i> Profile Photo</label>
+                    <div class="photo-upload-wrap">
+                        <img class="photo-preview" id="photoPreview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Crect fill='%23e8ecf1' width='60' height='60' rx='30'/%3E%3Ctext x='30' y='38' font-size='24' text-anchor='middle' fill='%236a7a9a'%3E👤%3C/text%3E%3C/svg%3E" alt="Preview">
+                        <input type="file" id="modalPhoto" accept="image/*">
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="save-btn" id="modalSaveBtn"><i class="fas fa-save"></i> Save</button>
+                    <button class="close-btn" id="modalCloseBtn"><i class="fas fa-times"></i> Cancel</button>
+                    <button class="delete-btn" id="modalDeleteBtn" style="display:none;"><i class="fas fa-trash"></i> Delete</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SYLLABUS EDIT MODAL -->
+        <div class="modal-overlay" id="syllabusModal">
+            <div class="modal-box" style="max-width:580px;">
+                <h3><i class="fas fa-list"></i> Edit Syllabus</h3>
+                <div class="sub" id="syllabusModalSub">Student: —</div>
+                <div class="form-row full">
+                    <label><i class="fas fa-list"></i> Syllabus Topics (one per line)</label>
+                    <textarea id="syllabusModalText" rows="6" placeholder="Module 1: Introduction
+Module 2: Basics
+Module 3: Advanced"></textarea>
+                </div>
+                <div class="btn-group">
+                    <button class="save-btn" id="syllabusModalSave"><i class="fas fa-save"></i> Save</button>
+                    <button class="close-btn" id="syllabusModalClose"><i class="fas fa-times"></i> Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- COURSE VIDEO MODAL -->
+        <div class="modal-overlay" id="courseModal">
+            <div class="modal-box" style="max-width:560px;">
+                <h3><i class="fas fa-video"></i> Add Course Video</h3>
+                <div class="sub">Select a student and add a video link</div>
+                <div class="form-row full">
+                    <label><i class="fas fa-user"></i> Select Student</label>
+                    <select id="courseStudentSelect">
+</select>
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-heading"></i> Video Title</label>
+                    <input type="text" id="courseVideoTitle" placeholder="e.g. Module 1 Introduction">
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-link"></i> Video URL</label>
+                    <input type="text" id="courseVideoUrl" placeholder="Cloudinary / YouTube / Vimeo link">
+                </div>
+                <div class="form-row full">
+                    <label><i class="fas fa-align-left"></i> Description (optional)</label>
+                    <input type="text" id="courseVideoDesc" placeholder="Brief description">
+                </div>
+                <div class="btn-group">
+                    <button class="save-btn" id="addCourseVideoBtn"><i class="fas fa-plus"></i> Add Video</button>
+                    <button class="close-btn" id="courseModalCloseBtn"><i class="fas fa-times"></i> Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ATTENDANCE HISTORY DETAIL MODAL -->
+        <div class="modal-overlay" id="attHistoryDetailModal">
+            <div class="modal-box" style="max-width:580px;">
+                <h3><i class="fas fa-clock"></i> Attendance Details</h3>
+                <div class="sub" id="attHistoryDetailSub">Student: —</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; font-size:13px; color:#4a5a7a; margin-bottom:12px; background:rgba(50,80,150,0.02); padding:10px 14px; border-radius:14px;">
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-book"></i> Course:</span> <strong id="ahdCourse">—</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-calendar-day"></i> Admission:</span> <strong id="ahdAdmission">—</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-check-circle"></i> Present:</span> <strong id="ahdPresent" style="color:#2a8a6a;">0</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-times-circle"></i> Absent:</span> <strong id="ahdAbsent" style="color:#b04040;">0</strong></div>
+                </div>
+                <div class="history-list" id="attHistoryDetailList">
+</div>
+                <div class="btn-group">
+                    <button class="close-btn" id="attHistoryDetailClose"><i class="fas fa-times"></i> Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- REMINDER HISTORY DETAIL MODAL -->
+        <div class="modal-overlay" id="remHistoryDetailModal">
+            <div class="modal-box" style="max-width:580px;">
+                <h3><i class="fas fa-bell"></i> Reminder Details</h3>
+                <div class="sub" id="remHistoryDetailSub">Student: —</div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; font-size:13px; color:#4a5a7a; margin-bottom:12px; background:rgba(50,80,150,0.02); padding:10px 14px; border-radius:14px;">
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-book"></i> Course:</span> <strong id="rhdCourse">—</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-calendar-day"></i> Admission:</span> <strong id="rhdAdmission">—</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-tag"></i> Fee Type:</span> <strong id="rhdFeeType">—</strong></div>
+                    <div><span style="color:#6a7a9a;"><i class="fas fa-coins"></i> Amount:</span> <strong id="rhdAmount">—</strong></div>
+                </div>
+                <div class="history-list" id="remHistoryDetailList">
+</div>
+                <div class="btn-group">
+                    <button class="close-btn" id="remHistoryDetailClose"><i class="fas fa-times"></i> Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIDEO PLAYER OVERLAY -->
+        <div class="video-player-overlay" id="videoPlayerOverlay">
+            <div class="video-player-container">
+                <div class="video-player-header">
+                    <span class="vp-title" id="videoPlayerTitle"><i class="fas fa-play-circle" style="color:#0ea5e9;"></i> Video</span>
+                    <button class="vp-close" onclick="closeVideoPlayer()">×</button>
+                </div>
+                <div class="video-player-body" id="videoPlayerBody">
+</div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/app.js"></script>
+
+</body></html>
