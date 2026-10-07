@@ -94,10 +94,38 @@
             const s = String(url || '').trim();
             return /^(https?:|blob:)/i.test(s) ? s : '';
         }
-        // SHA-256 hash (hex) for student passwords — never store plaintext.
-        async function hashPassword(pw) {
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(pw)));
-            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        // ═══ STUDENT FIREBASE AUTH ═══
+        // Username+password ab Firestore me NAHI, sirf Firebase Auth (Google ke
+        // secure server) me store hote hain. Student wahi username+password se
+        // login karta hai; email sirf ek andar ka label hai (user kabhi nahi dekhta).
+        const STUDENT_AUTH_DOMAIN = 'sm-panel.app';
+        function studentEmail(username) {
+            return String(username || '').trim().toLowerCase() + '@' + STUDENT_AUTH_DOMAIN;
+        }
+        // Ek alag (secondary) Firebase app instance — isse student ka auth user
+        // banta hai bina admin ki apni login session chhede.
+        function getSecondaryAuthApp() {
+            const name = 'studentMgrSecondary';
+            const existing = firebase.apps.find(a => a.name === name);
+            return existing || firebase.initializeApp(firebaseConfig, name);
+        }
+        async function createStudentAuthUser(username, password) {
+            const app = getSecondaryAuthApp();
+            try {
+                const cred = await app.auth().createUserWithEmailAndPassword(studentEmail(username), password);
+                return cred.user.uid;
+            } finally {
+                try { await app.auth().signOut(); } catch (e) {}
+            }
+        }
+        function authErrMessage(err) {
+            const map = {
+                'auth/operation-not-allowed': 'Console me Email/Password sign-in ENABLE karo (Authentication → Sign-in method).',
+                'auth/email-already-in-use': 'Ye username pehle se registered hai.',
+                'auth/weak-password': 'Password kam se kam 6 characters ka hona chahiye.',
+                'auth/invalid-email': 'Username me aisa character hai jo allowed nahi.'
+            };
+            return map[err && err.code] ? map[err.code] : (err && err.message) || 'Auth error';
         }
 
         function getSlotCount(slot) { return allStudents.filter(s => s.slot === slot).length; }
@@ -264,9 +292,46 @@
                 });
                 renderAll();
                 checkAutoReminders();
+                runStudentAuthMigration();
             }, (error) => {
                 showToast('Firestore error: ' + error.message, 'error');
             });
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        //  ONE-TIME MIGRATION: purane students (jinke paas plaintext password
+        //  hai, authUid nahi) unka Firebase Auth account banao, doc me authUid
+        //  link karo, aur plaintext password Firestore se hata do. Admin ke
+        //  login hote hi apne aap ek baar chalta hai.
+        // ═══════════════════════════════════════════════════════════════
+        let authMigrationDone = false;
+        async function runStudentAuthMigration() {
+            if (authMigrationDone) return;
+            const candidates = allStudents.filter(s => !s.authUid);
+            if (!candidates.length) { authMigrationDone = true; return; }
+            authMigrationDone = true;
+            let ok = 0; const failed = [];
+            for (const s of candidates) {
+                const pw = s.password; // legacy plaintext
+                if (!pw || String(pw).length < 6) {
+                    failed.push(`${s.username}${pw ? ' (password <6 chars)' : ' (no plaintext password)'}`);
+                    continue;
+                }
+                try {
+                    const uid = await createStudentAuthUser(s.username, String(pw));
+                    await db.collection('students').doc(s.id).update({
+                        authUid: uid,
+                        authEmail: studentEmail(s.username),
+                        password: firebase.firestore.FieldValue.delete(),
+                        passwordHash: firebase.firestore.FieldValue.delete()
+                    });
+                    ok++;
+                } catch (err) {
+                    failed.push(`${s.username} (${authErrMessage(err)})`);
+                }
+            }
+            if (ok) showToast(`🔐 ${ok} student account(s) Firebase Auth me migrate ho gaye.`, 'success');
+            if (failed.length) showToast('⚠️ Ye migrate nahi hue: ' + failed.join(', ') + ' — inhe delete karke dobara add karo.', 'error');
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -1030,9 +1095,26 @@
 
         // ─── STUDENT CRUD ───
         async function addStudent(data) {
+            const username = data.username.trim();
+            const password = String(data.password || '').trim();
+            const existing = allStudents.find(s => s.username === username);
+            if (existing) { showToast('Username already exists.', 'error'); return false; }
+            if (password.length < 6) { showToast('Password kam se kam 6 characters ka hona chahiye.', 'error'); return false; }
+
+            // 1) Firebase Auth me student ka secure account banao (username+password).
+            let uid;
+            try {
+                uid = await createStudentAuthUser(username, password);
+            } catch (err) {
+                showToast(authErrMessage(err), 'error');
+                return false;
+            }
+
+            // 2) Firestore doc me password BILKUL nahi jata — sirf authUid link hota hai.
             const student = {
-                username: data.username.trim(),
-                passwordHash: await hashPassword(data.password.trim()),
+                username: username,
+                authUid: uid,
+                authEmail: studentEmail(username),
                 name: data.name.trim(),
                 mobile: data.mobile.trim(),
                 course: data.course,
@@ -1053,12 +1135,9 @@
                 totalAbsent: 0,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
-            const existing = allStudents.find(s => s.username === student.username);
-            if (existing) { showToast('Username already exists.', 'error'); return false; }
             try {
                 const docRef = await db.collection('students').add(student);
                 showToast(`Student ${student.name} added!`, 'success');
-                // FIXED: Pass student with id for auto-reminder
                 if (data.sendReminder && student.feeType !== 'fixed') {
                     const studentWithId = { ...student, id: docRef.id };
                     setTimeout(() => sendManualReminderByData(studentWithId), 500);
@@ -1073,11 +1152,19 @@
         async function updateStudent(id, data) {
             const studentRef = db.collection('students').doc(id);
             const updates = {};
-            if (data.username !== undefined) updates['username'] = data.username.trim();
-            if (data.password !== undefined && data.password.trim() !== '') {
-                updates['passwordHash'] = await hashPassword(data.password.trim());
-                updates['password'] = firebase.firestore.FieldValue.delete();
+            // Username/password = credentials. Inhe client-side se badalna possible
+            // nahi (Firebase Auth doosre user ka password sirf Admin SDK se change
+            // hota hai). Credential change ke liye student delete karke dobara add karo.
+            if (data.username !== undefined && data.username.trim() !== '' &&
+                data.username.trim() !== (allStudents.find(s => s.id === id) || {}).username) {
+                showToast('Username badalna ho to student delete karke naya add karo (login credential hai).', 'error');
             }
+            if (data.password !== undefined && data.password.trim() !== '') {
+                showToast('Password badalne ke liye student delete karke naya add karo.', 'error');
+            }
+            // Purane plaintext/hash fields hamesha hatao (security).
+            updates['password'] = firebase.firestore.FieldValue.delete();
+            updates['passwordHash'] = firebase.firestore.FieldValue.delete();
             if (data.name !== undefined) updates['name'] = data.name.trim();
             if (data.mobile !== undefined) updates['mobile'] = data.mobile.trim();
             if (data.course !== undefined) updates['course'] = data.course;
@@ -1090,10 +1177,6 @@
             if (data.schedulePattern !== undefined) updates['schedulePattern'] = data.schedulePattern;
             if (data.photo !== undefined) updates['photo'] = data.photo;
             if (data.syllabus !== undefined) updates['syllabus'] = data.syllabus;
-            if (data.username) {
-                const existing = allStudents.find(s => s.username === data.username.trim() && s.id !== id);
-                if (existing) { showToast('Username already exists.', 'error'); return; }
-            }
             try {
                 await studentRef.update(updates);
                 showToast('Student updated.', 'success');
@@ -1106,6 +1189,9 @@
         async function deleteStudent(id) {
             if (!confirm('Delete this student permanently? All data will be removed from both admin and student panels.')) return;
             try {
+                // Firestore doc delete hota hai. Student ka Firebase Auth user orphan
+                // reh jata hai (client-side doosre user ko delete nahi kar sakte), par
+                // wo harmless hai — bina linked doc ke wo koi data nahi padh sakta.
                 await db.collection('students').doc(id).delete();
                 showToast('🗑️ Student removed permanently.', 'success');
                 renderAll();
